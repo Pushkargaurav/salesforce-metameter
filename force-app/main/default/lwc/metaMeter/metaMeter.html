@@ -1,0 +1,360 @@
+<template>
+  <section class="card" aria-labelledby="capacity-heading">
+    <header class="card-header">
+      <div class="heading">
+        <lightning-icon
+          icon-name="standard:custom"
+          size="small"
+        ></lightning-icon>
+        <h1 id="capacity-heading">MetaMeter: Custom Metadata Capacity</h1>
+      </div>
+      <div class="actions">
+        <lightning-button-icon
+          icon-name="utility:refresh"
+          alternative-text="Refresh capacity and analysis"
+          title="Refresh"
+          onclick={refresh}
+          disabled={loading}
+        ></lightning-button-icon>
+        <lightning-button-icon
+          icon-name="utility:download"
+          alternative-text="Export capacity CSV"
+          title="Export all filtered types to CSV"
+          onclick={exportCapacity}
+          disabled={exportDisabled}
+        ></lightning-button-icon>
+        <lightning-button-icon
+          data-help-trigger
+          icon-name="utility:info"
+          alternative-text="How MetaMeter calculates usage"
+          title="How usage is calculated"
+          onclick={openHelp}
+        ></lightning-button-icon>
+      </div>
+    </header>
+    <template lwc:if={loading}
+      ><div class="loading">
+        <lightning-spinner
+          alternative-text="Loading Custom Metadata capacity"
+          size="small"
+        ></lightning-spinner
+        ><span>Reading metadata definitions and record counts…</span>
+      </div></template
+    >
+    <template lwc:if={error}
+      ><div class="notice error" role="alert">{error}</div></template
+    >
+    <div class={gaugeClass}>
+      <div class="gauge-heading">
+        <div>
+          <div class="percentage">{percentage}</div>
+          <p>Estimated share of the org's Custom Metadata character limit</p>
+          <p class="muted">{usageDescription}</p>
+        </div>
+        <span class="status">{health}</span>
+      </div>
+      <div
+        class="meter"
+        role="progressbar"
+        aria-label="Estimated Custom Metadata capacity used"
+        aria-valuenow={gaugeValue}
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuetext={usageDescription}
+      >
+        <div class="meter-fill" style={gaugeStyle}></div>
+        <span class="marker half" title="Watch at 50%"></span
+        ><span class="marker eighty" title="Critical at 80%"></span>
+      </div>
+      <div class="thresholds">
+        <span class="half-label">50%</span><span class="eighty-label">80%</span>
+      </div>
+      <dl class="metrics">
+        <div>
+          <dt>Types</dt>
+          <dd>{typeCount}</dd>
+        </div>
+        <div>
+          <dt>Records</dt>
+          <dd>{totalRecords}</dd>
+        </div>
+        <div>
+          <dt>Characters left</dt>
+          <dd>{charactersLeft}</dd>
+        </div>
+      </dl>
+    </div>
+    <div class="filters">
+      <lightning-combobox
+        class="top-picker"
+        label="Show"
+        value={topLimit}
+        options={limitOptions}
+        onchange={handleLimit}
+      ></lightning-combobox>
+      <lightning-input
+        type="toggle"
+        label="Include managed-package (namespaced) types"
+        checked={includeManaged}
+        message-toggle-active="Included"
+        message-toggle-inactive="Excluded"
+        onchange={handleManaged}
+      ></lightning-input>
+      <span class="refreshed muted">{lastRefreshed}</span>
+    </div>
+    <template lwc:if={hasWarnings}>
+      <div class="notice warning" role="status">
+        <p>
+          <strong>Totals are incomplete.</strong> Types with a warning could not
+          be counted and are excluded.
+        </p>
+        <template for:each={warningRows} for:item="row"
+          ><p key={row.apiName}>{row.label}: {row.warning}</p></template
+        >
+      </div>
+    </template>
+    <template lwc:if={hasRows}
+      ><div class="table-container">
+        <lightning-datatable
+          key-field="apiName"
+          data={visibleRows}
+          columns={typeColumns}
+          hide-checkbox-column
+          sorted-by={sortedBy}
+          sorted-direction={sortDirection}
+          onsort={handleSort}
+          onrowaction={handleRowAction}
+        ></lightning-datatable>
+      </div>
+      <p class="table-caption muted">
+        {showingLabel}. CSV exports every type in the current namespace filter.
+      </p></template
+    >
+    <template lwc:if={emptyCapacity}
+      ><p class="empty">
+        No Custom Metadata Types found for this filter.
+      </p></template
+    >
+  </section>
+
+  <section class="card" aria-labelledby="analysis-heading">
+    <header class="card-header">
+      <div class="heading">
+        <lightning-icon
+          icon-name="standard:metrics"
+          size="small"
+        ></lightning-icon>
+        <h2 id="analysis-heading">Field Analysis</h2>
+      </div>
+      <lightning-button
+        label="Export CSV"
+        icon-name="utility:download"
+        onclick={exportFields}
+        disabled={analysisExportDisabled}
+      ></lightning-button>
+    </header>
+    <lightning-combobox
+      class="type-picker"
+      label="Custom Metadata Type"
+      value={selectedType}
+      options={typeOptions}
+      onchange={handleType}
+      disabled={loading}
+    ></lightning-combobox>
+    <template lwc:if={showAnalysisPrompt}
+      ><p class="empty">
+        Choose a type above, or select Analyze in the table, to see which fields
+        use the most characters.
+      </p></template
+    >
+    <template lwc:else>
+      <p class="analysis-summary">{analysisSummary}</p>
+      <template lwc:if={analyzing}
+        ><div class="loading">
+          <lightning-spinner
+            alternative-text="Scanning stored values"
+            size="small"
+          ></lightning-spinner
+          ><span role="status" aria-live="polite">{analysisProgress}</span>
+        </div></template
+      >
+      <template lwc:if={analysisError}
+        ><div class="notice warning" role="alert">
+          {analysisError}
+        </div></template
+      >
+      <template lwc:if={showSavings}
+        ><div class="savings">
+          <span>Could save</span><strong>{couldSave}</strong
+          ><span>characters across all records</span>
+        </div>
+        <p class="muted savings-note">
+          Text suggestions add 25% headroom and round up to 10. Review future
+          requirements and dependencies before changing a field.
+        </p></template
+      >
+      <template lwc:if={hasFields}
+        ><div class="table-container">
+          <lightning-datatable
+            key-field="apiName"
+            data={sortedFields}
+            columns={fieldColumns}
+            hide-checkbox-column
+            sorted-by={fieldSortedBy}
+            sorted-direction={fieldSortDirection}
+            onsort={handleFieldSort}
+          ></lightning-datatable></div
+      ></template>
+      <template lwc:if={noCustomFields}
+        ><p class="empty">
+          This type has no custom fields. Each record uses the standard-field
+          base allocation.
+        </p></template
+      >
+    </template>
+  </section>
+
+  <template lwc:if={helpOpen}>
+    <section
+      class="slds-modal slds-fade-in-open slds-modal_large"
+      role="dialog"
+      tabindex="-1"
+      aria-modal="true"
+      aria-labelledby="help-title"
+      onkeydown={handleHelpKey}
+    >
+      <div class="slds-modal__container">
+        <button
+          class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+          data-modal-close
+          onclick={closeHelp}
+          title="Close guide"
+        >
+          <lightning-icon
+            icon-name="utility:close"
+            alternative-text="Close guide"
+            variant="inverse"
+            size="small"
+          ></lightning-icon
+          ><span class="slds-assistive-text">Close guide</span>
+        </button>
+        <header class="slds-modal__header">
+          <h2 id="help-title" class="slds-text-heading_medium">
+            How MetaMeter Calculates Usage
+          </h2>
+          <p class="muted">A quick guide to every number on your dashboard</p>
+        </header>
+        <div class="slds-modal__content slds-p-around_medium help-content">
+          <p class="notice info">
+            MetaMeter estimates capacity from field definitions and record
+            counts. Compare the total with Setup → Custom Metadata Types or
+            System Overview. Only metadata visible to this app can be measured.
+          </p>
+          <div class="formula">
+            <span>141 base chars</span><b>+</b><span>Field costs</span><b>=</b
+            ><span>Chars per record</span><b>×</b><span>Records</span><b>=</b
+            ><strong>Total chars</strong>
+          </div>
+          <section class="help-section">
+            <h3>Characters per record</h3>
+            <p>
+              Every record counts 141 characters for the shared standard fields:
+              Label, Developer Name, Namespace Prefix, Protected Component,
+              Created By, and Last Modified By. Each custom field adds a fixed
+              amount based on its definition, whether or not a record fills it
+              in. Description and Qualified API Name are excluded.
+            </p>
+          </section>
+          <section class="help-section">
+            <h3>Cost by field type</h3>
+            <table class="cost-table">
+              <thead>
+                <tr>
+                  <th scope="col">Field type</th>
+                  <th scope="col">Characters per record</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template for:each={helpCosts} for:item="cost"
+                  ><tr key={cost.type}>
+                    <td>{cost.type}</td>
+                    <td>{cost.cost}</td>
+                  </tr></template
+                >
+              </tbody>
+            </table>
+          </section>
+          <section class="help-section">
+            <h3>Worked example</h3>
+            <p>
+              A type with Text(100), Text(200), and Text(255) fields and 500
+              records:
+            </p>
+            <div class="formula">
+              <span>555 field chars</span><b>+</b><span>141 base chars</span
+              ><b>=</b><span>696 per record</span><b>×</b
+              ><span>500 records</span><b>=</b
+              ><strong>348,000 · 3.48% of limit</strong>
+            </div>
+          </section>
+          <section class="help-section">
+            <h3>Reading the results</h3>
+            <div class="health-guide">
+              <div class="healthy">
+                <strong>Healthy</strong>
+                <p>Below 50%</p>
+              </div>
+              <div class="watch">
+                <strong>Watch</strong>
+                <p>50% to below 80%</p>
+              </div>
+              <div class="critical">
+                <strong>Critical</strong>
+                <p>80% and above</p>
+              </div>
+            </div>
+            <p>
+              <strong>Namespaced types</strong> come from managed packages.
+              Installed records from certified managed packages have a separate
+              allowance. Records you create in those types still count toward
+              your org's limit. The toggle excludes whole types and cannot
+              distinguish these record origins.
+            </p>
+            <p>
+              <strong>Warning icon</strong> means a type could not be counted.
+              It is excluded from the totals, and the dashboard reports
+              incomplete usage.
+            </p>
+            <p>
+              <strong>Suggested size</strong> applies only to oversized Text
+              fields. The longest stored value gets 25% headroom, rounded up to
+              the next 10, with a minimum of 10. Savings use the current record
+              count and appear after the full scan completes. Suggestions do not
+              change metadata.
+            </p>
+            <p>
+              <strong>Longest value</strong> is measured from full stored
+              values, including long text. For non-text fields, it is the length
+              of the value's string representation. Size Used is blank when no
+              declared character length applies.
+            </p>
+          </section>
+          <p>
+            <a
+              href="https://help.salesforce.com/s/articleView?id=platform.custommetadatatypes_limits.htm&amp;type=5"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Salesforce Custom Metadata allocations and usage calculations</a
+            >
+          </p>
+        </div>
+        <footer class="slds-modal__footer">
+          <button class="slds-button slds-button_brand" onclick={closeHelp}>
+            Got it
+          </button>
+        </footer>
+      </div>
+    </section>
+    <div class="slds-backdrop slds-backdrop_open"></div>
+  </template>
+</template>

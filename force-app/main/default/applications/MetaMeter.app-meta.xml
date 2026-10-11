@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<CustomApplication xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description
+  >Analyze Custom Metadata character capacity and find space-saving opportunities.</description>
+    <formFactors>Large</formFactors><formFactors
+  >Small</formFactors><isNavAutoTempTabsDisabled
+  >false</isNavAutoTempTabsDisabled><isNavPersonalizationDisabled
+  >false</isNavPersonalizationDisabled>
+    <label>MetaMeter</label><navType>Standard</navType><tabs
+  >MetaMeter</tabs><uiType>Lightning</uiType>
+</CustomApplication>
